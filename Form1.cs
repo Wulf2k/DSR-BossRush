@@ -2,6 +2,7 @@ using DarkSoulsScripting;
 using System.Collections;
 using System.Diagnostics;
 using System.Numerics;
+using System.Reflection.Metadata;
 
 namespace DSR_BossRush
 {
@@ -97,6 +98,13 @@ namespace DSR_BossRush
             new Thread(LaunchThread).Start();
         }
 
+
+
+        public int gameMode = 0;
+        public bool gameStarted = false;
+        public bool brStarted = false;
+
+
         void LaunchThread()
         {
             Launch();
@@ -115,6 +123,7 @@ namespace DSR_BossRush
             WaitFrpgSysInit();
             EzDrawHook.Hook3();
 
+            new Thread(titleThread).Start();
 
             //Lets load our custom textures.
             Hook.WUnicodeStr(0x1413fda40, "other:/BossRush.tpf");
@@ -134,9 +143,8 @@ namespace DSR_BossRush
             Hook.WUnicodeStr(0x1412f60a8, "brush_select_character_%02d");
 
 
-            //After pressing start, jump to Step 9 instead of 12
-            //This gives us both the basic vertical menu, and the horizontal char select.
-            Hook.WByte(0x14025cae2, 9);
+            
+
 
 
             //Fix title_prototype pos and height
@@ -153,6 +161,33 @@ namespace DSR_BossRush
             //pos, 0x1412f6160
             Hook.WFloat(0x1412f6160, 960 * scrRatio.X);
             Hook.WFloat(0x1412f6164, 792 * scrRatio.Y);
+
+
+
+            //After pressing start, jump to Step 9 instead of 12
+            //This gives us both the basic vertical menu, and the horizontal char select.
+            Hook.WByte(0x14025cae2, 9);
+
+            //After step 10, go to 12 instead of 15.
+            Hook.WByte(0x14025cd0d, 12);
+
+            //0x1412f6120 = Vertical select menu, text x offset
+            Hook.WFloat(0x1412f6120, 30 * scrRatio.X);
+            //0x1412f6130 = Vertical select menu, text y pos
+            Hook.WFloat(0x1412f6130, 560 * scrRatio.Y);
+            //0x1412f612c = Vertical select menu, box width
+            Hook.WFloat(0x1412f612c, 280 * scrRatio.X);
+            //0x14025C0BB = Vertical select menu, box y pos
+            Hook.WFloat(0x14025c0bb, 500 * scrRatio.Y);
+            Hook.WUnicodeStr(0x1412f5c00, "Boss Rush");
+            Hook.WUnicodeStr(0x1412f5c28, "Story");
+            Hook.WUnicodeStr(0x1412f5c50, "SURVIVE");
+            Hook.WUnicodeStr(0x1412f5c70, "");
+            Hook.WUnicodeStr(0x1412f5ca8, "");
+            Hook.WUnicodeStr(0x1412f5cf0, "");
+
+            
+
 
 
             //Further Scaling correction
@@ -174,6 +209,102 @@ namespace DSR_BossRush
 
 
         }
+
+
+        void titleThread()
+        {
+            Boolean cont = true;
+            int sleepDur = 5;
+
+            while (cont)
+            {
+                if (FrpgSystem.Title.Step == 16)
+                {
+                    sleepDur = 500;
+                    if (!gameStarted)
+                    {
+                        switch (gameMode)
+                        {
+                            case 0:
+                                gameStarted = true;
+                                if (!brStarted)
+                                {
+                                    new Thread(brThread).Start();
+                                    brStarted = true;
+                                }
+                                break;
+                            case 1:
+                                break;
+                            case 2:
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                } 
+                else {
+                    sleepDur = 10;
+                    gameStarted = false;
+                }
+
+                if (FrpgSystem.Title.Step == 10)
+                {
+                    gameMode = Hook.RInt32(FrpgSystem.Title.Address + 0x44);
+                    if (gameMode > 2)
+                    {
+                        gameMode = 0;
+                        Hook.WInt32(FrpgSystem.Title.Address + 0x44, 0);
+                    }
+                }
+                if (FrpgSystem.Title.Step == 12)
+                {
+                    FadeMan.A = 0;
+                }
+
+
+                if (Hook.RUInt32(0x140000000) == 0) { cont = false; };
+                Thread.Sleep(sleepDur);
+            }//end while cont
+        }//end titleThread
+
+        void brThread()
+        {
+            Boolean cont = true;
+            int sleepDur = 5;
+            bool fighting = false;
+            int bossNum = 0;
+
+
+
+            while (cont)
+            {
+                if (FrpgSystem.InGame.Step == 7)
+                {
+                    if ((WorldChrMan.LocalPlayer.MaxHP > 0) && (WorldChrMan.LocalPlayer.HP < 1))
+                    {
+                        Thread.Sleep(1000);
+                        GameMan.RequestToEnding = true;
+                        cont = false;
+                    }
+                    if (!fighting)
+                    {
+                        if (MenuMan.LoadingState  == 0)
+                        {
+                            bosses[bossNum].Fight();
+                            fighting = true;
+                        }
+
+                    }
+
+
+                }
+
+
+                if (Hook.RUInt32(0x140000000) == 0) { cont = false; };
+                Thread.Sleep(sleepDur);
+            }//end while cont
+            brStarted = false;
+        }//end brThread
 
 
 
